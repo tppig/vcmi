@@ -21,6 +21,9 @@
 #ifdef ENABLE_STUPID_AI
 #  include "../../AI/StupidAI/StupidAI.h"
 #endif
+#ifdef ENABLE_MYRULEBASED_AI
+#  include "../../AI/MyRuleBasedAI/MyRuleBasedAI.h"
+#endif
 #ifdef ENABLE_MMAI
 #  include "../../AI/MMAI/MMAI.h"
 #endif
@@ -64,6 +67,13 @@ std::shared_ptr<CBattleGameInterface> AIFactory::createBattleAI(const std::strin
 		return std::make_shared<CStupidAI>();
 #else
 		throw std::runtime_error("StupidAI is not available in this build!");
+#endif
+
+	if(name == "MyRuleBasedAI")
+#ifdef ENABLE_MYRULEBASED_AI
+		return std::make_shared<CMyRuleBasedAI>();
+#else
+		throw std::runtime_error("MyRuleBasedAI is not available in this build!");
 #endif
 
 	if(name == "MMAI")

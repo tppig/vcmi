@@ -39,7 +39,7 @@ VCMI ships several battle AIs (e.g. `StupidAI`, the simple one, and `BattleAI`, 
 
 > **Source-verified correction (was wrong in an earlier draft):** the current source does **not** load each AI as a separate runtime `.dll` with an exported entry point. Instead, each AI builds as a CMake **`OBJECT` library** (`add_library(StupidAI OBJECT …)`) that is **statically linked into the main `vcmi` library** (`target_link_libraries(vcmi PRIVATE StupidAI)` in `libFacade/CMakeLists.txt`), gated by a CMake option like `ENABLE_STUPID_AI`. Selection happens through a central factory — `AIFactory::createBattleAI(name)` in `lib/callback/AIFactory.cpp` — which is a simple `if(name == "StupidAI") return std::make_shared<CStupidAI>();` switch, each branch wrapped in `#ifdef ENABLE_…_AI`. The `setBattleAI <name>` console command still picks the AI by name; that name is matched in this factory.
 
-**Consequence:** to add your AI, you create a new module folder alongside the existing ones **and register it in two build-side places** (its own CMake target + the factory). You do **not** rewrite the engine.
+**Consequence:** to add your AI, you create a new module folder alongside the existing ones **and register its name in two separate systems** — the build/code side (its own CMake target, the `ENABLE_*` wiring, and the `AIFactory` branch) *and* the data side (the `config/schemas/settings.json` enum that validates AI names). You do **not** rewrite the engine. See Phase 3 step 11 for the exact list; the schema one is the easiest to forget.
 
 ### 2.2 Architecture / data flow
 
@@ -118,13 +118,40 @@ Your whole job in Stage 1 is implementing step 2 with hand-written rules.
 ### Phase 3 — Create your own AI module skeleton
 
 10. **Copy `AI/StupidAI` → `AI/MyRuleBasedAI`.** Rename the files and the class name (e.g. `CStupidAI` → `CMyRuleBasedAI`) consistently. (There is no exported DLL entry point to rename — the current model uses the factory instead.)
-11. **Register the module in the build — three places, following exactly how `StupidAI` is wired:**
+11. **Register the module — there are TWO independent name-whitelists, a code-side one and a data-side one. Miss either and the AI won't run.**
+
+    **Build / code registration (four places, following exactly how `StupidAI` is wired):**
     - **a.** Its own `AI/MyRuleBasedAI/CMakeLists.txt` — `add_library(MyRuleBasedAI OBJECT …)`, link `vcmiMain`, `vcmi_set_output_dir`, `enable_pch`.
-    - **b.** `AI/CMakeLists.txt` + the top-level `CMakeLists.txt` + `libFacade/CMakeLists.txt` — add an `ENABLE_MYRULEBASED_AI` option, the `add_subdirectory`, the `-D` definition, and `target_link_libraries(vcmi PRIVATE MyRuleBasedAI)`.
-    - **c.** `lib/callback/AIFactory.cpp` — add `#include "../../AI/MyRuleBasedAI/MyRuleBasedAI.h"` (under an `#ifdef`) and a new `if(name == "MyRuleBasedAI") return std::make_shared<CMyRuleBasedAI>();` branch in `createBattleAI`.
+    - **b.** The top-level `CMakeLists.txt` — add an `ENABLE_MYRULEBASED_AI` option *and* the matching `add_definitions(-DENABLE_MYRULEBASED_AI)`.
+    - **c.** `AI/CMakeLists.txt` (`add_subdirectory(MyRuleBasedAI)`) + `libFacade/CMakeLists.txt` (`target_link_libraries(vcmi PRIVATE MyRuleBasedAI)`), both under `if(ENABLE_MYRULEBASED_AI)`.
+    - **d.** `lib/callback/AIFactory.cpp` — add `#include "../../AI/MyRuleBasedAI/MyRuleBasedAI.h"` (under an `#ifdef`) and a new `if(name == "MyRuleBasedAI") return std::make_shared<CMyRuleBasedAI>();` branch in `createBattleAI`.
+
+    **Data / settings-schema registration (easy to forget — this one bit us):**
+    - **e.** `config/schemas/settings.json` — add `"MyRuleBasedAI"` to the `enum` array of **all three** combat-AI keys: `combatEnemyAI`, `combatAlliedAI`, `combatNeutralAI`. This is a hard validation gate: `setBattleAI` writes the name into `combatNeutralAI`, and if the name isn't in this enum the engine **rejects the whole `ai` settings block and silently falls back to defaults** — your AI never loads even though the C++ is correct. No rebuild needed for this edit: the build links `config/` into the output dir (`COPY_CONFIG_ON_BUILD`), so editing the source schema takes effect on the next launch.
+        - **Symptom if you forget it:** at startup the log prints `Data in settings is invalid! At /ai/combatNeutralAI → Error: Key must have one of predefined values: [...]`, and battles keep using the old/default AI.
 12. **Build and confirm `setBattleAI MyRuleBasedAI` selects it in-game** (behaviour will still equal StupidAI's at this point — that's fine; you're verifying the plumbing). Note: adding the factory branch touches `lib/`, so this *first* registration build is a heavier rebuild; subsequent edits to your AI's `.cpp` stay in the fast path.
+    - **Confirm via the log, not the command's output.** The cleanest proof is the line `Creating battle AI MyRuleBasedAI` (logged at info level when a battle starts). Don't trust the `setBattleAI` "Setting changed" message — for an unknown name the factory returns `CEmptyAI` rather than failing, so a typo still reports success while units do nothing.
+    - **Remember which side `setBattleAI` controls:** it writes only `combatNeutralAI`, i.e. the **neutral** side. The enemy hero (`combatEnemyAI`) and your own auto-combat (`combatAlliedAI`) are separate slots set only in the config file. So to watch your AI via `setBattleAI`, fight a **neutral** stack.
 
 ✅ **Milestone 3:** your module builds as its own DLL and is selectable in-game.
+
+---
+
+### Phase 3.5 — First custom behaviour: the "Random Mover" (for fun / proof of control)
+
+> A deliberately silly throwaway step before any real AI logic. The point is **not** to play well — it's to prove that *your* code is now driving the units, that you can read the battle state, submit a valid action, and watch the result. This de-risks Phase 4: once a unit visibly wanders where your code told it to, you know the whole pipeline (factory → `activeStack` → callback → engine) is yours to command.
+
+**Behaviour spec (v0 — "the drunkard"):**
+- It does **not** attack and does **not** seek the enemy. Each turn it just picks a random hex it can reach and walks there.
+- Concretely, inside `activeStack`: query the unit's available/reachable hexes (the same `battleGetAvailableHexes` / reachability calls StupidAI uses), pick one at random, and submit a `makeMove`.
+- **Required safety fallback:** if the unit genuinely has no legal move (fully blocked), it must still submit *some* valid action or the battle will hang waiting on it — fall back to `makeWait`/`makeDefend`. This is the one unavoidable exception to "no defend"; it's a stall-guard, not a decision.
+- Skip the special cases for now by simply not handling them specially — but be aware catapults/siege weapons can't "move," so the fallback above also covers them.
+- `yourTacticPhase` just ends the phase immediately (same as StupidAI).
+- Add a one-line log per turn: `"stack X: random-moving to hex N"` (or `"... no move available, waiting"`).
+
+**Why this is safe to throw away:** it lives entirely inside `activeStack`. When you start Phase 4, you replace that one method body with the real rule ladder — nothing else from this step needs unwinding.
+
+✅ **Milestone 3.5:** you select `MyRuleBasedAI`, start a battle, and watch your units wander randomly each turn under your own code — a full battle runs to completion without hanging.
 
 ---
 
@@ -233,5 +260,6 @@ So Stage 1 is not throwaway work; it's the foundation.
 - [ ] Run self-built VCMI on the test map  ✅ Milestone 1
 - [ ] Read `StupidAI`; find the decision method  ✅ Milestone 2
 - [ ] Copy → `MyRuleBasedAI`, register in CMake, build target, select in-game  ✅ Milestone 3
+- [ ] Random Mover v0: units wander randomly under your code  ✅ Milestone 3.5
 - [ ] Implement v1 rules + logging  ✅ Milestone 4
 - [ ] Repeatable tests + compare vs `BattleAI`  ✅ Milestone 5

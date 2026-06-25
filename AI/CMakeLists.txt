@@ -7,6 +7,10 @@ if(ENABLE_STUPID_AI)
 	add_subdirectory(StupidAI)
 endif()
 
+if(ENABLE_MYRULEBASED_AI)
+	add_subdirectory(MyRuleBasedAI)
+endif()
+
 if(ENABLE_BATTLE_AI)
 	add_subdirectory(BattleAI)
 endif()
