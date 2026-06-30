@@ -24,6 +24,9 @@
 #ifdef ENABLE_MYRULEBASED_AI
 #  include "../../AI/MyRuleBasedAI/MyRuleBasedAI.h"
 #endif
+#ifdef ENABLE_ARMAGEDDON_AI
+#  include "../../AI/ArmageddonAI/ArmageddonAI.h"
+#endif
 #ifdef ENABLE_MMAI
 #  include "../../AI/MMAI/MMAI.h"
 #endif
@@ -74,6 +77,13 @@ std::shared_ptr<CBattleGameInterface> AIFactory::createBattleAI(const std::strin
 		return std::make_shared<CMyRuleBasedAI>();
 #else
 		throw std::runtime_error("MyRuleBasedAI is not available in this build!");
+#endif
+
+	if(name == "ArmageddonAI")
+#ifdef ENABLE_ARMAGEDDON_AI
+		return std::make_shared<CArmageddonAI>();
+#else
+		throw std::runtime_error("ArmageddonAI is not available in this build!");
 #endif
 
 	if(name == "MMAI")

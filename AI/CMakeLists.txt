@@ -11,6 +11,10 @@ if(ENABLE_MYRULEBASED_AI)
 	add_subdirectory(MyRuleBasedAI)
 endif()
 
+if(ENABLE_ARMAGEDDON_AI)
+	add_subdirectory(ArmageddonAI)
+endif()
+
 if(ENABLE_BATTLE_AI)
 	add_subdirectory(BattleAI)
 endif()

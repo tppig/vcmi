@@ -155,6 +155,39 @@ Your whole job in Stage 1 is implementing step 2 with hand-written rules.
 
 ---
 
+### Phase 3.6 — Bonus spell: a *separate* `ArmageddonAI` module (Tier-0 hero spellcasting)
+
+> Another deliberately silly toy — but this time we ship it as its **own AI module, `ArmageddonAI`**, rather than bolting the spell onto `MyRuleBasedAI`. The goal is the same as 3.5 (prove a *new* mechanism end-to-end — the **hero spellcasting** path), with no spell evaluation: if the hero *can* fling Armageddon, it does, every chance it gets.
+
+**Why two separate AIs instead of one with the spell built in.**
+Building is slow, and toggling a behaviour by editing code + recompiling is a painful inner loop. If instead we have **two AIs compiled in at once** — `MyRuleBasedAI` (pure drunkard, *no* spell) and `ArmageddonAI` (drunkard + Armageddon) — we can switch between them **at runtime with `/setBattleAI`, no rebuild**. That keeps each module single-purpose and makes side-by-side demos trivial.
+
+- **`MyRuleBasedAI` stays the pure Random Mover** (Phase 3.5) — remove any Armageddon code from it so it is just the drunkard again.
+- **`ArmageddonAI` = a copy of the drunkard with the hero-spell block on top.** It is a second, independent module, registered through the exact same two-whitelist process as `MyRuleBasedAI` (see Phase 3 step 11): its own `AI/ArmageddonAI/` folder + CMake target, an `ENABLE_ARMAGEDDON_AI` option and the `add_subdirectory`/link wiring, an `AIFactory` branch (`if(name == "ArmageddonAI") ...`), **and** a `"ArmageddonAI"` entry added to the combat-AI `enum`s in `config/schemas/settings.json`.
+
+**How hero spellcasting differs from a unit action (recap from the BattleAI study):**
+- It is still decided **inside `activeStack`** — there is no separate "spell phase" callback. When one of your stacks becomes active, that is also the hero's opportunity to cast.
+- A hero spell is a different action shape: `actionType = HERO_SPELL`, `stackNumber = -1` (the hero, not a stack), the spell id set, a target set, and it is submitted via **`cb->battleMakeSpellAction(...)`** — *not* `battleMakeUnitAction`.
+- The hero may cast only **once per round**, so this fires at most once per combat round and then the stacks fall back to wandering.
+
+**Behaviour spec (`ArmageddonAI`, "the pyromaniac"):** at the top of `activeStack`, before the random-move logic:
+1. Get the hero: `cb->getBattle(battleID)->battleGetMyHero()`. If there is no hero, skip straight to the Random Mover.
+2. Check Armageddon is castable *right now* — confirm the exact spell-id constant and the castability check **in the current source** (don't trust this doc): get the Armageddon `CSpell` and test `spell->canBeCast(battle, spells::Mode::HERO, hero)`. That single check already covers "hero knows the spell", "enough mana", and "not otherwise blocked". Also confirm the hero is generally allowed to cast this turn (the general gate, e.g. `battleCanCastSpell(hero, Mode::HERO) == ESpellCastProblem::OK`).
+3. If castable: build the `HERO_SPELL` action (spell = Armageddon, `stackNumber = -1`, target = the whole battlefield — Armageddon is a global/no-target spell, so **confirm how a no-target spell's `target` is set in the source**) and submit with `battleMakeSpellAction`. Then `return`.
+4. Otherwise: fall through to the normal Random Mover move.
+5. Log it: `"hero: casting Armageddon"` so you can see it fire.
+
+**Gotchas to expect (this is the "fun" part):**
+- **Armageddon hits *everyone*** — both armies — except fire-immune creatures (red/black dragons, efreet, phoenix, fire elementals). So it will happily nuke **your own** stacks too. That is expected and part of the fun; do not "fix" it in v0.
+- **You'll need to set up the conditions to see it.** The hero must actually know Armageddon and have the mana. Use cheats / a custom test map to grant the spell and spell points (confirm the current cheat words in-source or in Section 7), then start a battle.
+- **`ArmageddonAI` only casts on a side that *has a hero*.** `setBattleAI` controls the neutral side, and neutral stacks usually have no hero → no cast → it just wanders. To see the nuke, put `ArmageddonAI` on a hero side (e.g. `combatAlliedAI` + the auto-combat button, or `combatEnemyAI`).
+
+**Why this stays clean:** `MyRuleBasedAI` and `ArmageddonAI` are independent modules. You can iterate on one without touching the other, and switch which one plays purely from the in-game console.
+
+✅ **Milestone 3.6:** both AIs are selectable in-game; `/setBattleAI MyRuleBasedAI` gives the pure drunkard, and `/setBattleAI ArmageddonAI` (on a hero side, hero knowing Armageddon + mana) casts the nuke — switching between them needs **no rebuild**.
+
+---
+
 ### Phase 4 — Implement the rule-based logic
 
 13. **Implement your decision rules** (see Section 5 for the proposed v1 rule set). Start dead simple, then add rules one at a time.
@@ -261,5 +294,6 @@ So Stage 1 is not throwaway work; it's the foundation.
 - [ ] Read `StupidAI`; find the decision method  ✅ Milestone 2
 - [ ] Copy → `MyRuleBasedAI`, register in CMake, build target, select in-game  ✅ Milestone 3
 - [ ] Random Mover v0: units wander randomly under your code  ✅ Milestone 3.5
+- [ ] Bonus: separate `ArmageddonAI` module; switch via `/setBattleAI`, no rebuild  ✅ Milestone 3.6
 - [ ] Implement v1 rules + logging  ✅ Milestone 4
 - [ ] Repeatable tests + compare vs `BattleAI`  ✅ Milestone 5
