@@ -1,5 +1,15 @@
 # VCMI Rule-Based Battle AI — Stage 1 Plan & Design
 
+> ## ✅ STATUS: COMPLETED (2026-07) — document closed
+> Stage 1 (SP-0) is **complete as of Milestone 3.6**: self-built VCMI, `MyRuleBasedAI` (Random Mover) and `ArmageddonAI` both registered, selectable, and playing full battles under our own code — the entire pipeline (build → registration → `activeStack` → actions → hero spells) is proven.
+>
+> **Phases 4 and 5 were NOT executed as written — they were deliberately redistributed** (see `PROJECT_OVERVIEW.md` §4.1):
+> - **Phase 4 (v1 rule ladder)** → moved to **SP-2 (Python Bridge AI)**, milestone B4: the rules will be implemented in Python over the bridge, where the edit loop is seconds instead of minutes. The Section 5 rule design below remains the spec.
+> - **Phase 5 (repeatable tests & comparison)** → absorbed and automated by **SP-1 (Battle Evaluation Framework)**.
+> - `MyRuleBasedAI` and `ArmageddonAI` are **frozen** as a weak baseline / spellcasting reference — no further development in C++.
+>
+> This document is retained as the record of what was built and the reference for build/registration procedure (Phase 3 step 11 is canonical). Active planning lives in `PROJECT_OVERVIEW.md`, `SP1_Battle_Evaluation_Framework.md`, and `SP2_Python_Bridge_AI.md`.
+
 **Project:** Build a custom battle AI for VCMI, climbing toward a reinforcement-learning agent.
 **This document covers:** Stage 1 only — get a working build of VCMI and implement a simple, rule-based battle AI that plays full battles on its own.
 **Platform:** Windows PC, building locally.
@@ -21,11 +31,11 @@
 - Adventure-map AI (you are only touching the *battle* AI).
 - Spellcasting logic (optional stretch goal; keep v1 simple).
 
-**Definition of Done for Stage 1:**
-1. A self-built `vcmiclient` runs and loads your test battle map.
-2. Your custom AI compiles into its own library (DLL) and is selectable via `setBattleAI`.
-3. It plays a full battle autonomously with sensible behaviour.
-4. You can run repeatable battles and compare it against the default `BattleAI`.
+**Definition of Done for Stage 1** *(final disposition at close-out)*:
+1. ✅ A self-built `vcmiclient` runs and loads your test battle map.
+2. ✅ Your custom AI compiles into its own module and is selectable via `setBattleAI` (two modules, in fact: `MyRuleBasedAI` and `ArmageddonAI`).
+3. ✅/➡️ It plays a full battle autonomously (Random Mover + Armageddon caster). "Sensible behaviour" (the rule ladder) was **re-scoped to SP-2 milestone B4** — see status header.
+4. ➡️ Repeatable battles & `BattleAI` comparison **re-scoped to SP-1** — see status header.
 
 ---
 
@@ -188,7 +198,9 @@ Building is slow, and toggling a behaviour by editing code + recompiling is a pa
 
 ---
 
-### Phase 4 — Implement the rule-based logic
+### Phase 4 — Implement the rule-based logic — ➡️ MOVED TO SP-2 (not executed here)
+
+> **Close-out note:** implementing the rules in C++ and re-tuning through minutes-long rebuilds was superseded by the Python bridge. The rule ladder (Section 5) will be written **in Python** as SP-2 milestone B4. Steps below kept for the record only.
 
 13. **Implement your decision rules** (see Section 5 for the proposed v1 rule set). Start dead simple, then add rules one at a time.
 14. **After each change, build only your module** and re-test. Keep the cycle tight.
@@ -198,7 +210,9 @@ Building is slow, and toggling a behaviour by editing code + recompiling is a pa
 
 ---
 
-### Phase 5 — Test, observe, iterate
+### Phase 5 — Test, observe, iterate — ➡️ ABSORBED BY SP-1 (not executed here)
+
+> **Close-out note:** manual repeatable battles and eyeball comparison are replaced by the automated Battle Evaluation Framework (`SP1_Battle_Evaluation_Framework.md`), which turns exactly this phase into scenarios, N-run statistics, and stored baselines. Steps below kept for the record only.
 
 16. **Set up repeatable test battles.** Use your custom map and the in-battle **auto-combat** button so the AI plays your side, or launch with `-onlyAI` for a fully hands-off AI-vs-AI game.
 17. **Compare against the default.** Put your AI on one side and `BattleAI` on the other (use `setBattleAI` to control the neutral side) and see how your rules hold up. Run the same setup several times to get a feel for win rate.
@@ -286,14 +300,16 @@ So Stage 1 is not throwaway work; it's the foundation.
 
 ## 10. Suggested Order of Attack (quick checklist)
 
-- [ ] Install VS 2022 Community (+ C++ workload)
-- [ ] Clone VCMI with submodules
-- [ ] Set up prebuilt dependencies
-- [ ] Configure CMake (RelWithDebInfo) + full build once
-- [ ] Run self-built VCMI on the test map  ✅ Milestone 1
-- [ ] Read `StupidAI`; find the decision method  ✅ Milestone 2
-- [ ] Copy → `MyRuleBasedAI`, register in CMake, build target, select in-game  ✅ Milestone 3
-- [ ] Random Mover v0: units wander randomly under your code  ✅ Milestone 3.5
-- [ ] Bonus: separate `ArmageddonAI` module; switch via `/setBattleAI`, no rebuild  ✅ Milestone 3.6
-- [ ] Implement v1 rules + logging  ✅ Milestone 4
-- [ ] Repeatable tests + compare vs `BattleAI`  ✅ Milestone 5
+- [x] Install VS 2022 Community (+ C++ workload)
+- [x] Clone VCMI with submodules
+- [x] Set up prebuilt dependencies
+- [x] Configure CMake (RelWithDebInfo) + full build once
+- [x] Run self-built VCMI on the test map  ✅ Milestone 1 — DONE
+- [x] Read `StupidAI`; find the decision method  ✅ Milestone 2 — DONE
+- [x] Copy → `MyRuleBasedAI`, register in CMake, build target, select in-game  ✅ Milestone 3 — DONE
+- [x] Random Mover v0: units wander randomly under your code  ✅ Milestone 3.5 — DONE
+- [x] Bonus: separate `ArmageddonAI` module; switch via `/setBattleAI`, no rebuild  ✅ Milestone 3.6 — DONE
+- [ ] ~~Implement v1 rules + logging (Milestone 4)~~ — ➡️ moved to **SP-2, milestone B4** (rules in Python over the bridge)
+- [ ] ~~Repeatable tests + compare vs `BattleAI` (Milestone 5)~~ — ➡️ absorbed by **SP-1** (automated arena + baselines)
+
+**Stage 1 closed at Milestone 3.6.**
